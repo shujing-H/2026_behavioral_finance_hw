@@ -9,6 +9,18 @@ wheels/
 # Virtual environments
 .venv
 
+# Python version managers
+.python-version
+
+# macOS
+.DS_Store
+
+# IDE/Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
 # Document files
 *.pdf
 *.doc
