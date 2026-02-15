@@ -25,6 +25,9 @@ print(ff_factors_df.head(2))
 ret_df["market_cap"].describe()
 
 # %% [cell 4]
+ret_df.group_by("date").agg(pl.len().alias("n_stocks"))["n_stocks"].unique()
+
+# %% [cell 5]
 # change the dtypes for ff_factors_df
 ff_factors_df = ff_factors_df.with_columns(
     pl.col("").cast(str).str.to_date("%Y%m").dt.month_end().alias("date"),
@@ -34,16 +37,16 @@ ff_factors_df = ff_factors_df.with_columns(
     pl.col("RF").str.strip_chars().cast(pl.Float64),
 ).select("date", "Mkt-RF", "SMB", "HML", "RF")
 
-# %% [cell 5]
+# %% [cell 6]
 # change the dates in ret_df into date
 ret_df = ret_df.with_columns(
     pl.col("date").cast(str).str.to_date("%Y%m%d").dt.month_end().alias("date"),
 )
 
-# %% [cell 6]
+# %% [cell 7]
 ret_df.columns
 
-# %% [cell 7]
+# %% [cell 8]
 ret_df.select(
     (
         pl.sum_horizontal(
@@ -53,7 +56,7 @@ ret_df.select(
     ).alias("mom_12_1")
 ).sort("mom_12_1", descending=True)
 
-# %% [cell 8]
+# %% [cell 9]
 def construct_momentum_12_1(df: pl.DataFrame) -> pl.DataFrame:
     """
     Construct 12-1 momentum signal:
@@ -249,7 +252,7 @@ def plot_decile_portfolios(
 
     return pl.DataFrame(portfolio_returns_df_pd.reset_index())
 
-# %% [cell 9]
+# %% [cell 10]
 mom_12_1_df = construct_momentum_12_1(ret_df)
 ew_portfolio_returns_df = construct_decile_ew_portfolios(
     mom_12_1_df, "mom_12_1", ret_df
@@ -270,7 +273,7 @@ rw_portfolio_returns_df_pivoted = plot_decile_portfolios(
     rw_portfolio_returns_df, "mom_12_1 (rw)"
 )
 
-# %% [cell 10]
+# %% [cell 11]
 # plot three long-short portfolios
 long_short_df = (
     ew_portfolio_returns_df_pivoted.select(
@@ -298,7 +301,7 @@ long_short_df = (
     .plot(figsize=(10, 6))
 )
 
-# %% [cell 11]
+# %% [cell 12]
 def run_capm_regression(
     portfolio_returns_df: pl.DataFrame, mkt_factor_df: pl.DataFrame
 ) -> pd.DataFrame:
@@ -343,7 +346,7 @@ def run_capm_regression(
 
     return results
 
-# %% [cell 12]
+# %% [cell 13]
 # Run CAPM regression for EW and VW portfolios
 ew_capm_results = run_capm_regression(ew_portfolio_returns_df, ff_factors_df)
 vw_capm_results = run_capm_regression(vw_portfolio_returns_df, ff_factors_df)
@@ -356,7 +359,7 @@ display(vw_capm_results.round(4))
 print("\nRank-Weighted Portfolios CAPM Results:")
 display(rw_capm_results.round(4))
 
-# %% [cell 13]
+# %% [cell 14]
 def construct_long_short_portfolio(portfolio_returns_df: pl.DataFrame) -> pl.DataFrame:
     """
     Construct a long-short portfolio: long top decile (10), short bottom decile (1).
@@ -433,7 +436,7 @@ def calculate_ls_statistics(ls_df: pl.DataFrame, ff_factors_df: pl.DataFrame) ->
         "annual_sharpe": annual_sharpe,
     }
 
-# %% [cell 14]
+# %% [cell 15]
 # Construct long-short portfolios for EW and VW
 ew_ls_df = construct_long_short_portfolio(ew_portfolio_returns_df)
 vw_ls_df = construct_long_short_portfolio(vw_portfolio_returns_df)
@@ -456,7 +459,7 @@ results_df = pd.DataFrame(
 print("Long-Short Portfolio (Decile 10 - Decile 1) Statistics:")
 display(results_df.round(4))
 
-# %% [cell 15]
+# %% [cell 16]
 def construct_tau_horizon_ls_portfolio(
     signal_df: pl.DataFrame,
     signal_name: str,
@@ -474,25 +477,27 @@ def construct_tau_horizon_ls_portfolio(
         signal_name: Name of the signal column
         return_df: DataFrame with returns (must have ret_p{tau} column)
         tau: Holding period in months
-        weighting: "ew" for equal-weighted, "vw" for value-weighted
+        weighting: "ew" for equal-weighted, "vw" for value-weighted, "rw" for rank-weighted
     """
     ret_col = f"ret_p{tau}"
 
     # Join signal with forward returns at horizon tau
-    if weighting == "ew":
-        df = signal_df.join(
-            return_df.select("permno", "date", ret_col),
-            on=["permno", "date"],
-            how="left",
-            validate="1:1",
-        )
-    else:  # vw
+    if weighting == "vw":
         df = signal_df.join(
             return_df.select("permno", "date", ret_col, "market_cap"),
             on=["permno", "date"],
             how="left",
             validate="1:1",
         )
+    else:
+        df = signal_df.join(
+            return_df.select("permno", "date", ret_col),
+            on=["permno", "date"],
+            how="left",
+            validate="1:1",
+        )
+
+    df = df.drop_nulls(subset=[ret_col])
 
     # Rank signals within each date and assign to deciles
     df = df.with_columns(
@@ -516,11 +521,21 @@ def construct_tau_horizon_ls_portfolio(
             .agg(pl.col(ret_col).mean().alias("portfolio_return"))
             .sort(["date", "decile"])
         )
-    else:  # vw
+    elif weighting == "vw":  # vw
         portfolio_returns = (
             df.group_by(["date", "decile"])
             .agg(
                 (pl.col(ret_col) * (pl.col("market_cap") / pl.col("market_cap").sum()))
+                .sum()
+                .alias("portfolio_return")
+            )
+            .sort(["date", "decile"])
+        )
+    elif weighting == "rw":  # rw
+        portfolio_returns = (
+            df.group_by(["date", "decile"])
+            .agg(
+                (pl.col(ret_col) * pl.col("rank") / pl.col("rank").sum())
                 .sum()
                 .alias("portfolio_return")
             )
@@ -571,12 +586,12 @@ def calculate_ff_alpha_for_horizon(
 
     return model.params[0], model.tvalues[0]
 
-# %% [cell 16]
+# %% [cell 17]
 # Calculate FF alpha and t-stat for different horizons tau = 1 to 36
 horizons = list(range(1, 37))
 ew_results = []
 vw_results = []
-
+rw_results = []
 for tau in horizons:
     # Equal-weighted
     ew_ls = construct_tau_horizon_ls_portfolio(
@@ -592,12 +607,20 @@ for tau in horizons:
     vw_alpha, vw_tstat = calculate_ff_alpha_for_horizon(vw_ls, ff_factors_df)
     vw_results.append({"tau": tau, "ff_alpha": vw_alpha, "t_stat": vw_tstat})
 
+    # Rank-weighted
+    rw_ls = construct_tau_horizon_ls_portfolio(
+        mom_12_1_df, "mom_12_1", ret_df, tau, weighting="rw"
+    )
+    rw_alpha, rw_tstat = calculate_ff_alpha_for_horizon(rw_ls, ff_factors_df)
+    rw_results.append({"tau": tau, "ff_alpha": rw_alpha, "t_stat": rw_tstat})
+
 ew_horizon_df = pd.DataFrame(ew_results)
 vw_horizon_df = pd.DataFrame(vw_results)
+rw_horizon_df = pd.DataFrame(rw_results)
 
-# %% [cell 17]
+# %% [cell 18]
 # Plot FF alpha and t-statistics as a function of horizon tau
-fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+fig, axes = plt.subplots(3, 2, figsize=(18, 15))
 
 # Equal-weighted FF alpha
 axes[0, 0].bar(
@@ -640,6 +663,27 @@ axes[1, 1].set_xlabel("Horizon tau (months)")
 axes[1, 1].set_ylabel("t-statistic")
 axes[1, 1].set_title("Value-Weighted: t-stat on FF Alpha by Horizon")
 axes[1, 1].legend()
+
+# Rank-weighted FF alpha
+axes[2, 0].bar(
+    rw_horizon_df["tau"], rw_horizon_df["ff_alpha"], color="lightgreen", alpha=0.7
+)
+axes[2, 0].axhline(y=0, color="black", linestyle="--", linewidth=0.8)
+axes[2, 0].set_xlabel("Horizon tau (months)")
+axes[2, 0].set_ylabel("FF Alpha (%)")
+axes[2, 0].set_title("Rank-Weighted: FF Alpha by Horizon")
+
+# Rank-weighted t-stat
+axes[2, 1].bar(
+    rw_horizon_df["tau"], rw_horizon_df["t_stat"], color="lightgreen", alpha=0.7
+)
+axes[2, 1].axhline(y=1.96, color="red", linestyle="--", linewidth=0.8, label="t=1.96")
+axes[2, 1].axhline(y=-1.96, color="red", linestyle="--", linewidth=0.8)
+axes[2, 1].axhline(y=0, color="black", linestyle="--", linewidth=0.8)
+axes[2, 1].set_xlabel("Horizon tau (months)")
+axes[2, 1].set_ylabel("t-statistic")
+axes[2, 1].set_title("Rank-Weighted: t-stat on FF Alpha by Horizon")
+axes[2, 1].legend()
 
 plt.tight_layout()
 plt.suptitle(

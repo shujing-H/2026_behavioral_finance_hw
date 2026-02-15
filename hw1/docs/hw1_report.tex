@@ -5,10 +5,16 @@
 \usepackage{booktabs}
 \usepackage{graphicx}
 \usepackage{subcaption}
+\usepackage{float}
+\usepackage{placeins}
+\usepackage{indentfirst}
 \usepackage{hyperref}
 \usepackage{xcolor}
 \usepackage{listings}
 \usepackage{microtype}
+
+% Indent the first paragraph after section headings.
+\setlength{\parindent}{1.5em}
 
 \hypersetup{
   colorlinks=true,
@@ -27,7 +33,7 @@
 }
 
 \title{Homework 1 Report: Momentum}
-\author{Shujing Hou \quad 3040781643 \\ Wenyu Guo \quad 3040782423}
+\author{Shujing Hou \quad 3040781643 \\ Wenyu Gu \quad 3040782423}
 \date{\today}
 
 \begin{document}
@@ -35,6 +41,7 @@
 \sloppy
 
 \section{Overview and data}
+
 \textbf{Goal.} This report studies the persistence of momentum-based strategies using monthly returns for the top 1,000 U.S. stocks by market capitalization (1980--present) and the Fama--French 3 factors.
 
 \textbf{Signal definition (12--1 momentum).}
@@ -65,14 +72,14 @@ Each month $t$:
 \end{itemize}
 
 \subsection{Results}
-\begin{table}[h!]
+\begin{table}[H]
 \centering
 \caption{Average monthly raw returns by momentum decile (in \%).}
 \label{tab:q1_raw_returns}
 \input{hw1_report_tables/q1_decile_raw_returns.tex}
 \end{table}
 
-\begin{figure}[h!]
+\begin{figure}[H]
 \centering
 \begin{subfigure}{0.32\textwidth}
   \includegraphics[width=\linewidth]{hw1_report_assets/q1_cumret_ew.png}
@@ -90,26 +97,20 @@ Each month $t$:
 \label{fig:q1_cumret}
 \end{figure}
 
-\begin{figure}[h!]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.78\textwidth]{hw1_report_assets/q1_longshort_timeseries.png}
 \caption{Long--short (decile 10 minus decile 1) portfolio returns over time for EW/VW/RW.}
 \label{fig:q1_longshort_series}
 \end{figure}
+\FloatBarrier
 
 \subsection{Analysis}
-The core diagnostic in a momentum sort is whether returns are \textbf{monotone} in the signal: higher momentum deciles should earn higher next-month returns on average.
-Table~\ref{tab:q1_raw_returns} and Figure~\ref{fig:q1_cumret} show the decile return pattern and the implied long--short spread.
+The key diagnostic is whether next-month returns are \textbf{increasing in the momentum signal}. Table~\ref{tab:q1_raw_returns} shows a clear monotone pattern across deciles under all three weighting schemes.
 
-\textbf{What we learn from the weighting comparison.}
+\textbf{EW:} Decile 1 earns 0.607\% per month while decile 10 earns 1.388\% per month, a long--short spread of 0.781\% per month (about 9.37\% annualized). \textbf{VW} is extremely similar (0.606\% vs 1.367\%, spread 0.761\% per month), which indicates the premium is not driven only by smaller names within the ``top 1000'' universe. \textbf{RW} also produces a large spread (0.750\% vs 1.376\%, spread 0.626\% per month), but its loser-decile average is higher, which mechanically compresses the long--short.
 
-EW, VW, and RW do \emph{not} just rescale the same strategy; they change which stocks inside each decile drive the realized return:
-\begin{itemize}
-  \item \textbf{EW} puts relatively more weight on smaller names (within the top-1000 universe), so it is more sensitive to momentum in smaller firms.
-  \item \textbf{VW} concentrates on the largest firms. If momentum is weaker among mega-caps, VW spreads are typically smaller; if momentum is strong among large firms, VW and EW will look similar.
-  \item \textbf{RW} intentionally emphasizes the \emph{extremes} within a decile by giving higher-signal stocks more weight. This can be interpreted as probing whether the signal is \textbf{continuous} (stronger signal $\Rightarrow$ stronger expected return) rather than a pure decile membership effect.
-\end{itemize}
-Empirically, comparing the three series in Figure~\ref{fig:q1_longshort_series} helps identify whether the momentum premium is primarily coming from (i) smaller names, (ii) bigger names, or (iii) the most extreme momentum observations within each decile.
+Figure~\ref{fig:q1_longshort_series} shows that EW/VW/RW long--short series co-move strongly over time, suggesting the choice of weighting changes the magnitude of the premium more than its timing.
 
 
 % --------------------------Question 2----------------------------------
@@ -123,14 +124,14 @@ For each decile portfolio $p$, we run the CAPM regression on \textbf{excess retu
 Standard errors are the OLS standard errors (as in the notebook).
 
 \subsection{Results}
-\begin{table}[h!]
+\begin{table}[H]
 \centering
 \caption{CAPM results by decile (EW portfolios). Returns and factors are in percent per month.}
 \label{tab:q2_capm_ew}
 \input{hw1_report_tables/q2_capm_ew.tex}
 \end{table}
 
-\begin{table}[h!]
+\begin{table}[H]
 \centering
 \caption{CAPM results by decile (VW portfolios). Returns and factors are in percent per month.}
 \label{tab:q2_capm_vw}
@@ -138,23 +139,22 @@ Standard errors are the OLS standard errors (as in the notebook).
 {\input{hw1_report_tables/q2_capm_vw.tex}}
 \end{table}
 
-\begin{table}[h!]
+\begin{table}[H]
 \centering
 \caption{CAPM results by decile (RW portfolios). Returns and factors are in percent per month.}
 \label{tab:q2_capm_rw}
 \input{hw1_report_tables/q2_capm_rw.tex}
 \end{table}
+\FloatBarrier
 
 \subsection{Analysis}
-\textbf{How to read these tables.} The CAPM $\beta$ describes the market exposure of each decile; the CAPM $\alpha$ is the average excess return not explained by market risk alone.
+\textbf{What the CAPM results show (Tables~\ref{tab:q2_capm_ew}--\ref{tab:q2_capm_rw}).}
 
-\textbf{What the results suggest.}
-Across the three weighting schemes, the key comparison is whether the \emph{alpha spread} between low- and high-momentum deciles is robust:
-\begin{itemize}
-  \item If high-momentum deciles have higher CAPM alphas than low-momentum deciles, then momentum cannot be explained away by market exposure alone.
-  \item If alphas change materially between EW and VW, it indicates that firm size/weighting inside deciles matters for the abnormal performance.
-  \item If RW produces alphas closer to the EW case (or amplifies the spread), that supports the interpretation that \emph{signal strength within a decile} carries incremental information.
-\end{itemize}
+\textbf{1) Large and robust alpha spread.} Under EW, CAPM $\alpha$ rises from 0.295\% (decile 1) to 1.111\% (decile 10), a spread of about 0.816\% per month. VW and RW show nearly the same winner-minus-loser alpha spread (VW: 0.296\% to 1.092\%; RW: 0.448\% to 1.099\%). This indicates that the momentum pattern is not explained by market exposure alone.
+
+\textbf{2) Betas are low and fairly flat across deciles.} In all three tables, CAPM betas range roughly from 0.06 to 0.13 and do not increase systematically with momentum. Therefore the return differences across deciles are coming primarily from $\alpha$ rather than higher market risk.
+
+\textbf{3) Statistical strength is concentrated in mid/high deciles.} For EW/VW/RW, most mid-to-high deciles have $t$-statistics on $\alpha$ around 2.4--3.5, while decile 1 is not significant (EW $t=0.71$, VW $t=0.72$). This suggests that in this sample, the momentum premium is driven more by winner outperformance than by loser underperformance.
 
 
 
@@ -171,54 +171,60 @@ Construct a long--short strategy that is long the top momentum decile and short 
 \end{itemize}
 
 \subsection{Results}
-\begin{table}[h!]
+\begin{table}[H]
 \centering
 \caption{Long--short (10--1) strategy summary statistics (EW/VW/RW).}
 \label{tab:q3_ls}
-\input{hw1_report_tables/q3_longshort_summary.tex}
+\small
+\resizebox{\textwidth}{!}{\input{hw1_report_tables/q3_longshort_summary.tex}}
 \end{table}
+\FloatBarrier
 
 \subsection{Analysis}
-Table~\ref{tab:q3_ls} shows that the long--short strategy earns a positive average return under all three weighting schemes, with EW and VW fairly close and RW somewhat smaller in this run.
+Table~\ref{tab:q3_ls} summarizes the winner-minus-loser (10--1) strategy.
 
-\textbf{Risk-adjusted performance.}
-Both CAPM and FF3 alphas are positive, which is consistent with momentum being more than just market exposure.
-However, the $t$-statistics on these alphas are around the 1--1.5 range here, which is \textbf{not conventionally significant} at common thresholds (e.g., $|t|\ge 1.96$ for 5\%). Interpreting this as a student exercise: the point estimates suggest a momentum premium, but the statistical evidence is modest in this particular sample and specification.
+\textbf{Average return (annualized).} EW and VW are both around 9.1--9.4\% annualized (EW: 9.3647\%, VW: 9.1353\%), while RW is smaller (7.5043\%).
 
-\textbf{Why EW $\approx$ VW but RW is smaller.}
-EW and VW being close suggests the premium is not driven solely by either small names or the largest names in this top-1000 universe. RW being smaller can happen when:
-\begin{itemize}
-  \item the signal is informative mainly at the decile level (membership), not strongly increasing within-decile, or
-  \item emphasizing the extremes increases idiosyncratic volatility (hurting Sharpe), or
-  \item the rank-weighting amplifies sensitivity to outliers in the momentum signal.
-\end{itemize}
+\textbf{Risk-adjusted performance.} The alphas are positive across all weighting schemes (e.g., EW CAPM $\alpha=0.5963\%$ per month; EW FF3 $\alpha=0.6154\%$ per month), but the $t$-statistics are only 1.1--1.5, i.e., below the 5\% significance threshold ($|t| \ge 1.96$). In this run, the premium is economically meaningful but statistically noisy.
+
+\textbf{Sharpe ratios.} Annual Sharpe ratios are positive but modest (EW: 0.2510; VW: 0.2448; RW: 0.1909), reflecting the high volatility of momentum spreads.
+
+\textbf{Weighting comparison.} The fact that EW $\approx$ VW suggests the spread is not driven only by smaller firms (within this universe). RW underperforms here, which is consistent with the signal working mainly at the decile membership level rather than increasing smoothly with within-decile signal strength.
 
 
 % --------------------------Question 4----------------------------------
 \newpage
 \section{Question 4: $\tau$-month horizon momentum strategy}
 \subsection{Economic prediction}
+
 \textbf{Underreaction story.} If momentum is driven by investors \emph{under-reacting} to news, then the momentum effect should \textbf{persist for some horizons}: FF $\alpha(\tau)$ should remain positive for small-to-medium $\tau$ and only decay gradually as prices incorporate information.
 
 \textbf{Overreaction story.} If momentum is driven by \emph{over-reaction}, then one expects \textbf{reversal at longer horizons}: FF $\alpha(\tau)$ may become smaller and eventually negative as mispricing corrects.
 
 \subsection{Empirical results}
-\begin{table}[h!]
+\begin{table}[H]
 \centering
 \caption{Representative horizons: FF3 $\alpha$ and $t$-stat for the $\tau$-month horizon long--short strategy.}
 \label{tab:q4_small}
 \input{hw1_report_tables/q4_horizon_small.tex}
 \end{table}
 
-\begin{figure}[h!]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.92\textwidth]{hw1_report_assets/q4_horizon_alpha_tstat.png}
-\caption{FF3 $\alpha$ and $t$-statistics for the $\tau$-month horizon momentum strategy as a function of $\tau$ (EW and VW).}
+\caption{FF3 $\alpha$ and $t$-statistics for the $\tau$-month horizon momentum strategy as a function of $\tau$ (EW/VW/RW).}
 \label{fig:q4_horizon}
 \end{figure}
+\FloatBarrier
 
 \subsection{Conclusion}
-Figure~\ref{fig:q4_horizon} summarizes how the risk-adjusted momentum premium evolves as the holding horizon increases. The key takeaway is whether $\alpha(\tau)$ remains positive (supporting underreaction/persistence) or eventually reverses (supporting overreaction/correction). The associated $t$-statistics indicate how strongly the data support those patterns at each horizon.
+Table~\ref{tab:q4_small} and Figure~\ref{fig:q4_horizon} show a clear \textbf{short-term momentum / long-term reversal} pattern across all three weighting schemes.
+
+\textbf{Short horizons: positive but not strongly significant.} At $\tau=1$, FF3 $\alpha$ is positive for EW/VW/RW (0.6154\%, 0.5946\%, 0.4517\%) with $t$-statistics around 1.16--1.50. By $\tau=3$ and $\tau=6$, the alphas decay toward zero.
+
+\textbf{Long horizons: reversal, strongest around 24 months.} By $\tau=12$, alphas turn negative for EW/VW/RW (about $-0.31$ to $-0.35$\%). The reversal is strongest and statistically significant at $\tau=24$ months: EW $\alpha=-0.5994\%$ with $t=-2.2358$, VW $\alpha=-0.5138\%$ with $t=-2.2861$, and RW $\alpha=-0.4823\%$ with $t=-2.1609$. \footnote{We are referring to the Table \ref{tab:q4_small}'s results. From Figure \ref{fig:q4_horizon} the strongest reversal is around $\tau=20$ and alpha turns negative around $\tau=8$. The reason why we only show part of the results in Table \ref{tab:q4_small} is that these horizons are commonly used for calculating the momentum factor.}
+
+\textbf{Interpretation.} Positive short-horizon alphas are consistent with underreaction (slow price adjustment), while the significant negative long-horizon alphas support overreaction and subsequent correction (reversal). This is why momentum strategies are typically implemented with short holding horizons and frequent rebalancing.
 
 
 % --------------------------Appendix----------------------------------

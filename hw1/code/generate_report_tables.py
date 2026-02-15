@@ -230,13 +230,22 @@ def construct_tau_horizon_ls_portfolio(
             how="left",
             validate="1:1",
         )
-    else:
+    elif weighting == "vw":
         df = signal_df.join(
             return_df.select("permno", "date", ret_col, "market_cap"),
             on=["permno", "date"],
             how="left",
             validate="1:1",
         )
+    elif weighting == "rw":
+        df = signal_df.join(
+            return_df.select("permno", "date", ret_col),
+            on=["permno", "date"],
+            how="left",
+            validate="1:1",
+        )
+    else:
+        raise ValueError(f"Unknown weighting={weighting!r}; expected one of: ew, vw, rw")
 
     df = _assign_deciles(df, signal_name)
 
@@ -246,7 +255,7 @@ def construct_tau_horizon_ls_portfolio(
             .agg(pl.col(ret_col).mean().alias("portfolio_return"))
             .sort(["date", "decile"])
         )
-    else:
+    elif weighting == "vw":
         port = (
             df.group_by(["date", "decile"])
             .agg(
@@ -254,6 +263,15 @@ def construct_tau_horizon_ls_portfolio(
                 .sum()
                 .alias("portfolio_return")
             )
+            .sort(["date", "decile"])
+        )
+    else:  # rw
+        df = df.with_columns(
+            (pl.col("rank") / pl.col("rank").sum().over(["date", "decile"])).alias("weight")
+        )
+        port = (
+            df.group_by(["date", "decile"])
+            .agg((pl.col("weight") * pl.col(ret_col)).sum().alias("portfolio_return"))
             .sort(["date", "decile"])
         )
 
@@ -277,9 +295,10 @@ def _write_latex_table(df: pd.DataFrame, out_path: Path, float_fmt: str = "%.4f"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     def esc(s: str) -> str:
+        # IMPORTANT: we intentionally do NOT escape backslashes here so that
+        # LaTeX in labels (e.g., \%, \alpha, $t$) passes through correctly.
         return (
-            s.replace("\\", "\\textbackslash{}")
-            .replace("&", "\\&")
+            s.replace("&", "\\&")
             .replace("%", "\\%")
             .replace("_", "\\_")
             .replace("#", "\\#")
@@ -381,22 +400,28 @@ def main() -> int:
     )
     _write_latex_table(ls_stats, out_dir / "q3_longshort_summary.tex", float_fmt="%.4f")
 
-    # Q4: horizons τ=1..36 (FF alpha and t-stat) for EW & VW, plus a small summary table.
+    # Q4: horizons τ=1..36 (FF alpha and t-stat) for EW / VW / RW, plus a small summary table.
     horizons = list(range(1, 37))
     ew_rows: List[Dict[str, float]] = []
     vw_rows: List[Dict[str, float]] = []
+    rw_rows: List[Dict[str, float]] = []
     for tau in horizons:
         ew_tau_ls = construct_tau_horizon_ls_portfolio(mom_df, "mom_12_1", ret_df, tau, "ew")
         vw_tau_ls = construct_tau_horizon_ls_portfolio(mom_df, "mom_12_1", ret_df, tau, "vw")
+        rw_tau_ls = construct_tau_horizon_ls_portfolio(mom_df, "mom_12_1", ret_df, tau, "rw")
         ew_a, ew_t = calculate_ff_alpha_for_horizon(ew_tau_ls, ff_df)
         vw_a, vw_t = calculate_ff_alpha_for_horizon(vw_tau_ls, ff_df)
+        rw_a, rw_t = calculate_ff_alpha_for_horizon(rw_tau_ls, ff_df)
         ew_rows.append({"tau": tau, "ff_alpha": ew_a, "t_stat": ew_t})
         vw_rows.append({"tau": tau, "ff_alpha": vw_a, "t_stat": vw_t})
+        rw_rows.append({"tau": tau, "ff_alpha": rw_a, "t_stat": rw_t})
 
     ew_h = pd.DataFrame(ew_rows).set_index("tau")
     vw_h = pd.DataFrame(vw_rows).set_index("tau")
+    rw_h = pd.DataFrame(rw_rows).set_index("tau")
     _write_latex_table(ew_h, out_dir / "q4_horizon_ew_full.tex", float_fmt="%.4f")
     _write_latex_table(vw_h, out_dir / "q4_horizon_vw_full.tex", float_fmt="%.4f")
+    _write_latex_table(rw_h, out_dir / "q4_horizon_rw_full.tex", float_fmt="%.4f")
 
     # Small “representative horizons” table for the report body
     taus_small = [1, 3, 6, 12, 24, 36]
@@ -406,6 +431,8 @@ def main() -> int:
             "EW $t$": ew_h.loc[taus_small, "t_stat"],
             "VW $\\alpha$": vw_h.loc[taus_small, "ff_alpha"],
             "VW $t$": vw_h.loc[taus_small, "t_stat"],
+            "RW $\\alpha$": rw_h.loc[taus_small, "ff_alpha"],
+            "RW $t$": rw_h.loc[taus_small, "t_stat"],
         },
         index=taus_small,
     )
