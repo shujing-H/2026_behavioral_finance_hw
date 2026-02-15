@@ -27,6 +27,7 @@ wheels/
 *.docx
 *.ppt
 *.pptx
+*.tex
 
 # Data files
 data/
