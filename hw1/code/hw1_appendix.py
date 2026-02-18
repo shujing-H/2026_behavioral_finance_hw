@@ -22,12 +22,11 @@ print(ret_df.head(2))
 print(ff_factors_df.head(2))
 
 # %% [cell 3]
-ret_df["market_cap"].describe()
+ret_df.with_columns((pl.col("prc") * pl.col("shrout") / 1e6).alias("market_cap2"))[
+    "market_cap", "market_cap2"
+].describe()
 
 # %% [cell 4]
-ret_df.group_by("date").agg(pl.len().alias("n_stocks"))["n_stocks"].unique()
-
-# %% [cell 5]
 # change the dtypes for ff_factors_df
 ff_factors_df = ff_factors_df.with_columns(
     pl.col("").cast(str).str.to_date("%Y%m").dt.month_end().alias("date"),
@@ -37,16 +36,14 @@ ff_factors_df = ff_factors_df.with_columns(
     pl.col("RF").str.strip_chars().cast(pl.Float64),
 ).select("date", "Mkt-RF", "SMB", "HML", "RF")
 
-# %% [cell 6]
+# %% [cell 5]
 # change the dates in ret_df into date
 ret_df = ret_df.with_columns(
     pl.col("date").cast(str).str.to_date("%Y%m%d").dt.month_end().alias("date"),
+    (pl.col("prc").abs() * pl.col("shrout")).alias("market_cap"),
 )
 
-# %% [cell 7]
-ret_df.columns
-
-# %% [cell 8]
+# %% [cell 6]
 ret_df.select(
     (
         pl.sum_horizontal(
@@ -56,7 +53,7 @@ ret_df.select(
     ).alias("mom_12_1")
 ).sort("mom_12_1", descending=True)
 
-# %% [cell 9]
+# %% [cell 7]
 def construct_momentum_12_1(df: pl.DataFrame) -> pl.DataFrame:
     """
     Construct 12-1 momentum signal:
@@ -113,7 +110,7 @@ def construct_decile_ew_portfolios(
         .sort(["date", "decile"])
     )
 
-    return portfolio_returns
+    return portfolio_returns, df
 
 
 def construct_decile_vw_portfolios(
@@ -158,7 +155,7 @@ def construct_decile_vw_portfolios(
         .sort(["date", "decile"])
     )
 
-    return portfolio_returns
+    return portfolio_returns, df
 
 
 def construct_decile_rw_portfolios(
@@ -208,7 +205,7 @@ def construct_decile_rw_portfolios(
         .sort(["date", "decile"])
     )
 
-    return portfolio_returns
+    return portfolio_returns, df
 
 
 def plot_decile_portfolios(
@@ -236,15 +233,13 @@ def plot_decile_portfolios(
             values="cumulative_return",
             aggregate_function=None,
         )
-        .with_columns(
-            (pl.col("10") - pl.col("1")).alias("long_short"),
-        )
+        .with_columns(pl.col("date").dt.offset_by("1mo").dt.month_end().alias("date"))
         .to_pandas()
         .set_index("date")
     )
 
-    portfolio_returns_df_pd.iloc[:, :-1].plot(figsize=(10, 6), linestyle="--")
-    portfolio_returns_df_pd.iloc[:, -1].plot(figsize=(10, 6), color="black")
+    portfolio_returns_df_pd.plot(figsize=(10, 6))
+    # portfolio_returns_df_pd.iloc[:, -1].plot(figsize=(10, 6), color="black")
     plt.legend(loc="upper left")
     plt.tight_layout()
     plt.title(f"Cumulative Returns of Decile Portfolios for {signal_name}")
@@ -252,17 +247,22 @@ def plot_decile_portfolios(
 
     return pl.DataFrame(portfolio_returns_df_pd.reset_index())
 
-# %% [cell 10]
+# %% [cell 8]
+# construct the signal
 mom_12_1_df = construct_momentum_12_1(ret_df)
-ew_portfolio_returns_df = construct_decile_ew_portfolios(
+
+# construct the portfolios
+ew_portfolio_returns_df, ew_df = construct_decile_ew_portfolios(
     mom_12_1_df, "mom_12_1", ret_df
 )
-vw_portfolio_returns_df = construct_decile_vw_portfolios(
+vw_portfolio_returns_df, vw_df = construct_decile_vw_portfolios(
     mom_12_1_df, "mom_12_1", ret_df
 )
-rw_portfolio_returns_df = construct_decile_rw_portfolios(
+rw_portfolio_returns_df, _ = construct_decile_rw_portfolios(
     mom_12_1_df, "mom_12_1", ret_df
 )
+
+# plot the decile portfolios
 ew_portfolio_returns_df_pivoted = plot_decile_portfolios(
     ew_portfolio_returns_df, "mom_12_1 (ew)"
 )
@@ -273,35 +273,24 @@ rw_portfolio_returns_df_pivoted = plot_decile_portfolios(
     rw_portfolio_returns_df, "mom_12_1 (rw)"
 )
 
-# %% [cell 11]
-# plot three long-short portfolios
-long_short_df = (
-    ew_portfolio_returns_df_pivoted.select(
-        "date", pl.col("long_short").alias("long_short_ew")
-    )
-    .join(
-        vw_portfolio_returns_df_pivoted.select(
-            "date", pl.col("long_short").alias("long_short_vw")
-        ),
-        on="date",
-        how="left",
-        validate="1:1",
-    )
-    .join(
-        rw_portfolio_returns_df_pivoted.select(
-            "date", pl.col("long_short").alias("long_short_rw")
-        ),
-        on="date",
-        how="left",
-        validate="1:1",
-    )
-    .to_pandas()
-    .set_index("date")
-    .sort_index()
-    .plot(figsize=(10, 6))
-)
+# %% [cell 9]
+# average monthly return of each decile and different weighting schemes
+pl.concat(
+    [
+        ew_portfolio_returns_df.group_by("decile")
+        .agg(pl.col("portfolio_return").mean())
+        .with_columns(pl.lit("ew").alias("weighting")),
+        vw_portfolio_returns_df.group_by("decile")
+        .agg(pl.col("portfolio_return").mean())
+        .with_columns(pl.lit("vw").alias("weighting")),
+        rw_portfolio_returns_df.group_by("decile")
+        .agg(pl.col("portfolio_return").mean())
+        .with_columns(pl.lit("rw").alias("weighting")),
+    ],
+    how="vertical",
+).pivot(index="decile", on="weighting", values="portfolio_return").sort("decile")
 
-# %% [cell 12]
+# %% [cell 10]
 def run_capm_regression(
     portfolio_returns_df: pl.DataFrame, mkt_factor_df: pl.DataFrame
 ) -> pd.DataFrame:
@@ -309,6 +298,12 @@ def run_capm_regression(
     Run the CAPM regression for each portfolio decile.
     Uses groupby.apply to avoid explicit for-loops.
     """
+    # Shift formation date forward by 1 month to align with return realization date,
+    # since portfolio_return uses ret_p1 (realized in month t+1)
+    portfolio_returns_df = portfolio_returns_df.with_columns(
+        pl.col("date").dt.offset_by("1mo").dt.month_end().alias("date")
+    )
+
     # Join portfolio returns with market factor (keep long format)
     df = portfolio_returns_df.join(
         mkt_factor_df.select("date", "Mkt-RF", "RF"),
@@ -323,13 +318,14 @@ def run_capm_regression(
     )
 
     # Convert to pandas for groupby regression
-    df_pd = df.select("decile", "excess_return", "Mkt-RF").to_pandas()
+    df_pd = df.sort("date").select("decile", "excess_return", "Mkt-RF").to_pandas()
 
     def capm_regression(group: pd.DataFrame) -> pd.Series:
         """Run CAPM regression on a single group."""
-        y = group["excess_return"].values
-        X = sm.add_constant(group["Mkt-RF"].values)
+        y = group["excess_return"].to_numpy()
+        X = sm.add_constant(group["Mkt-RF"].to_numpy())
         model = sm.OLS(y, X, missing="drop").fit()
+        # model = sm.OLS(y, X).fit()
         return pd.Series(
             {
                 "alpha": model.params[0],
@@ -346,7 +342,7 @@ def run_capm_regression(
 
     return results
 
-# %% [cell 13]
+# %% [cell 11]
 # Run CAPM regression for EW and VW portfolios
 ew_capm_results = run_capm_regression(ew_portfolio_returns_df, ff_factors_df)
 vw_capm_results = run_capm_regression(vw_portfolio_returns_df, ff_factors_df)
@@ -359,7 +355,7 @@ display(vw_capm_results.round(4))
 print("\nRank-Weighted Portfolios CAPM Results:")
 display(rw_capm_results.round(4))
 
-# %% [cell 14]
+# %% [cell 12]
 def construct_long_short_portfolio(portfolio_returns_df: pl.DataFrame) -> pl.DataFrame:
     """
     Construct a long-short portfolio: long top decile (10), short bottom decile (1).
@@ -389,16 +385,25 @@ def calculate_ls_statistics(ls_df: pl.DataFrame, ff_factors_df: pl.DataFrame) ->
     - Fama-French 3-factor alpha and t-stat
     - Annual Sharpe ratio
     """
+    ls_df = ls_df.with_columns(
+        pl.col("date")
+        .dt.offset_by("1mo")
+        .dt.month_end()
+        .alias("date")  # change the date to the realized date
+    )
     # Join with FF factors
     df = ls_df.join(
         ff_factors_df.select("date", "Mkt-RF", "SMB", "HML", "RF"),
         on="date",
-        how="inner",
+        how="left",
+        validate="1:1",
     )
 
     # Compute excess return (convert to percent to match FF factors)
     df = df.with_columns(
-        (pl.col("ls_return") * 100 - pl.col("RF")).alias("excess_return"),
+        # (pl.col("ls_return") * 100 - pl.col("RF")).alias("excess_return"),
+        # what if we just use the raw return for regression?
+        (pl.col("ls_return") * 100).alias("excess_return"),
         (pl.col("ls_return") * 100).alias("raw_return"),
     )
 
@@ -436,7 +441,7 @@ def calculate_ls_statistics(ls_df: pl.DataFrame, ff_factors_df: pl.DataFrame) ->
         "annual_sharpe": annual_sharpe,
     }
 
-# %% [cell 15]
+# %% [cell 13]
 # Construct long-short portfolios for EW and VW
 ew_ls_df = construct_long_short_portfolio(ew_portfolio_returns_df)
 vw_ls_df = construct_long_short_portfolio(vw_portfolio_returns_df)
@@ -459,7 +464,7 @@ results_df = pd.DataFrame(
 print("Long-Short Portfolio (Decile 10 - Decile 1) Statistics:")
 display(results_df.round(4))
 
-# %% [cell 16]
+# %% [cell 14]
 def construct_tau_horizon_ls_portfolio(
     signal_df: pl.DataFrame,
     signal_name: str,
@@ -559,23 +564,26 @@ def construct_tau_horizon_ls_portfolio(
 
 
 def calculate_ff_alpha_for_horizon(
-    ls_df: pl.DataFrame, ff_factors_df: pl.DataFrame
+    ls_df: pl.DataFrame, ff_factors_df: pl.DataFrame, tau: int = 1
 ) -> tuple[float, float]:
     """
     Calculate FF 3-factor alpha and t-statistic for a long-short portfolio.
     Returns (alpha, t_stat).
     """
+    # Shift formation date forward by tau months to align with return realization date
+    ls_df = ls_df.with_columns(
+        pl.col("date").dt.offset_by(f"{tau}mo").dt.month_end().alias("date")
+    )
+
     df = ls_df.join(
         ff_factors_df.select("date", "Mkt-RF", "SMB", "HML", "RF"),
         on="date",
         how="inner",
     )
 
-    df = df.with_columns(
-        (pl.col("ls_return") * 100 - pl.col("RF")).alias("excess_return")
-    )
+    df = df.with_columns((pl.col("ls_return") * 100).alias("excess_return"))
 
-    df_pd = df.to_pandas().dropna()
+    df_pd = df.to_pandas()
 
     if len(df_pd) < 10:
         return np.nan, np.nan
@@ -586,7 +594,7 @@ def calculate_ff_alpha_for_horizon(
 
     return model.params[0], model.tvalues[0]
 
-# %% [cell 17]
+# %% [cell 15]
 # Calculate FF alpha and t-stat for different horizons tau = 1 to 36
 horizons = list(range(1, 37))
 ew_results = []
@@ -597,26 +605,32 @@ for tau in horizons:
     ew_ls = construct_tau_horizon_ls_portfolio(
         mom_12_1_df, "mom_12_1", ret_df, tau, weighting="ew"
     )
-    ew_alpha, ew_tstat = calculate_ff_alpha_for_horizon(ew_ls, ff_factors_df)
+    ew_alpha, ew_tstat = calculate_ff_alpha_for_horizon(ew_ls, ff_factors_df, tau)
     ew_results.append({"tau": tau, "ff_alpha": ew_alpha, "t_stat": ew_tstat})
 
     # Value-weighted
     vw_ls = construct_tau_horizon_ls_portfolio(
         mom_12_1_df, "mom_12_1", ret_df, tau, weighting="vw"
     )
-    vw_alpha, vw_tstat = calculate_ff_alpha_for_horizon(vw_ls, ff_factors_df)
+    vw_alpha, vw_tstat = calculate_ff_alpha_for_horizon(vw_ls, ff_factors_df, tau)
     vw_results.append({"tau": tau, "ff_alpha": vw_alpha, "t_stat": vw_tstat})
 
     # Rank-weighted
     rw_ls = construct_tau_horizon_ls_portfolio(
         mom_12_1_df, "mom_12_1", ret_df, tau, weighting="rw"
     )
-    rw_alpha, rw_tstat = calculate_ff_alpha_for_horizon(rw_ls, ff_factors_df)
+    rw_alpha, rw_tstat = calculate_ff_alpha_for_horizon(rw_ls, ff_factors_df, tau)
     rw_results.append({"tau": tau, "ff_alpha": rw_alpha, "t_stat": rw_tstat})
 
 ew_horizon_df = pd.DataFrame(ew_results)
 vw_horizon_df = pd.DataFrame(vw_results)
 rw_horizon_df = pd.DataFrame(rw_results)
+
+# %% [cell 16]
+ew_horizon_df
+
+# %% [cell 17]
+vw_horizon_df
 
 # %% [cell 18]
 # Plot FF alpha and t-statistics as a function of horizon tau
@@ -641,7 +655,7 @@ axes[0, 1].axhline(y=0, color="black", linestyle="--", linewidth=0.8)
 axes[0, 1].set_xlabel("Horizon tau (months)")
 axes[0, 1].set_ylabel("t-statistic")
 axes[0, 1].set_title("Equal-Weighted: t-stat on FF Alpha by Horizon")
-axes[0, 1].legend()
+axes[0, 1].legend(loc="upper right")
 
 # Value-weighted FF alpha
 axes[1, 0].bar(
@@ -662,7 +676,7 @@ axes[1, 1].axhline(y=0, color="black", linestyle="--", linewidth=0.8)
 axes[1, 1].set_xlabel("Horizon tau (months)")
 axes[1, 1].set_ylabel("t-statistic")
 axes[1, 1].set_title("Value-Weighted: t-stat on FF Alpha by Horizon")
-axes[1, 1].legend()
+axes[1, 1].legend(loc="upper right")
 
 # Rank-weighted FF alpha
 axes[2, 0].bar(
@@ -683,7 +697,7 @@ axes[2, 1].axhline(y=0, color="black", linestyle="--", linewidth=0.8)
 axes[2, 1].set_xlabel("Horizon tau (months)")
 axes[2, 1].set_ylabel("t-statistic")
 axes[2, 1].set_title("Rank-Weighted: t-stat on FF Alpha by Horizon")
-axes[2, 1].legend()
+axes[2, 1].legend(loc="upper right")
 
 plt.tight_layout()
 plt.suptitle(

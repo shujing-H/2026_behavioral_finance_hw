@@ -2,27 +2,22 @@
   "assets_dir": "hw1/docs/hw1_report_assets",
   "extracted": [
     {
-      "cell_index": 14,
+      "cell_index": 11,
       "file": "hw1/docs/hw1_report_assets/q1_cumret_ew.png",
       "output_index": 0
     },
     {
-      "cell_index": 14,
+      "cell_index": 11,
       "file": "hw1/docs/hw1_report_assets/q1_cumret_vw.png",
       "output_index": 1
     },
     {
-      "cell_index": 14,
+      "cell_index": 11,
       "file": "hw1/docs/hw1_report_assets/q1_cumret_rw.png",
       "output_index": 2
     },
     {
-      "cell_index": 15,
-      "file": "hw1/docs/hw1_report_assets/q1_longshort_timeseries.png",
-      "output_index": 0
-    },
-    {
-      "cell_index": 26,
+      "cell_index": 25,
       "file": "hw1/docs/hw1_report_assets/q4_horizon_alpha_tstat.png",
       "output_index": 0
     }

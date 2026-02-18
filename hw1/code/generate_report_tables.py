@@ -145,6 +145,11 @@ def construct_decile_rw_portfolios(
 
 
 def run_capm_regression(portfolio_returns_df: pl.DataFrame, ff_df: pl.DataFrame) -> pd.DataFrame:
+    # Shift formation date forward by 1 month to align with return realization date,
+    # since portfolio_return uses ret_p1 (realized in month t+1)
+    portfolio_returns_df = portfolio_returns_df.with_columns(
+        pl.col("date").dt.offset_by("1mo").dt.month_end().alias("date")
+    )
     df = portfolio_returns_df.join(
         ff_df.select("date", "Mkt-RF", "RF"),
         on="date",
@@ -180,10 +185,14 @@ def construct_long_short_portfolio(portfolio_returns_df: pl.DataFrame) -> pl.Dat
 
 
 def calculate_ls_statistics(ls_df: pl.DataFrame, ff_df: pl.DataFrame) -> Dict[str, float]:
+    # Shift formation date forward by 1 month to align with return realization date
+    ls_df = ls_df.with_columns(
+        pl.col("date").dt.offset_by("1mo").dt.month_end().alias("date")
+    )
     df = ls_df.join(
         ff_df.select("date", "Mkt-RF", "SMB", "HML", "RF"), on="date", how="inner"
     ).with_columns(
-        (pl.col("ls_return") * 100 - pl.col("RF")).alias("excess_return"),
+        (pl.col("ls_return") * 100).alias("excess_return"),
         (pl.col("ls_return") * 100).alias("raw_return"),
     )
 
@@ -279,9 +288,15 @@ def construct_tau_horizon_ls_portfolio(
     return pivoted.select(pl.col("date"), (pl.col("10") - pl.col("1")).alias("ls_return"))
 
 
-def calculate_ff_alpha_for_horizon(ls_df: pl.DataFrame, ff_df: pl.DataFrame) -> Tuple[float, float]:
+def calculate_ff_alpha_for_horizon(
+    ls_df: pl.DataFrame, ff_df: pl.DataFrame, tau: int = 1
+) -> Tuple[float, float]:
+    # Shift formation date forward by tau months to align with return realization date
+    ls_df = ls_df.with_columns(
+        pl.col("date").dt.offset_by(f"{tau}mo").dt.month_end().alias("date")
+    )
     df = ls_df.join(ff_df.select("date", "Mkt-RF", "SMB", "HML", "RF"), on="date", how="inner")
-    df = df.with_columns((pl.col("ls_return") * 100 - pl.col("RF")).alias("excess_return"))
+    df = df.with_columns((pl.col("ls_return") * 100).alias("excess_return"))
     df_pd = df.to_pandas().dropna()
     if len(df_pd) < 10:
         return float("nan"), float("nan")
@@ -409,9 +424,9 @@ def main() -> int:
         ew_tau_ls = construct_tau_horizon_ls_portfolio(mom_df, "mom_12_1", ret_df, tau, "ew")
         vw_tau_ls = construct_tau_horizon_ls_portfolio(mom_df, "mom_12_1", ret_df, tau, "vw")
         rw_tau_ls = construct_tau_horizon_ls_portfolio(mom_df, "mom_12_1", ret_df, tau, "rw")
-        ew_a, ew_t = calculate_ff_alpha_for_horizon(ew_tau_ls, ff_df)
-        vw_a, vw_t = calculate_ff_alpha_for_horizon(vw_tau_ls, ff_df)
-        rw_a, rw_t = calculate_ff_alpha_for_horizon(rw_tau_ls, ff_df)
+        ew_a, ew_t = calculate_ff_alpha_for_horizon(ew_tau_ls, ff_df, tau)
+        vw_a, vw_t = calculate_ff_alpha_for_horizon(vw_tau_ls, ff_df, tau)
+        rw_a, rw_t = calculate_ff_alpha_for_horizon(rw_tau_ls, ff_df, tau)
         ew_rows.append({"tau": tau, "ff_alpha": ew_a, "t_stat": ew_t})
         vw_rows.append({"tau": tau, "ff_alpha": vw_a, "t_stat": vw_t})
         rw_rows.append({"tau": tau, "ff_alpha": rw_a, "t_stat": rw_t})
